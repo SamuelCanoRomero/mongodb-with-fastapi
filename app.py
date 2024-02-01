@@ -12,18 +12,35 @@ from bson import ObjectId
 import motor.motor_asyncio
 from pymongo import ReturnDocument
 
+#conexion BD
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 
 app = FastAPI(
     title="Student Course API",
     summary="A sample application showing how to use FastAPI to add a ReST API to a MongoDB collection.",
 )
-client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
+
+
+MONGODB_URL= "mongodb+srv://brayancanoromero128:kRzwWeqW9xP0PcPo@cluster0.bndpqix.mongodb.net/?retryWrites=true&w=majority"
+# Create a new client and connect to the server
+#client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
+client = MongoClient(MONGODB_URL, server_api=ServerApi('1'))
 db = client.college
 student_collection = db.get_collection("students")
+# Send a ping to confirm a successful connection
+try:
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(e)
+#fin conexion BD
+    
 
 # Represents an ObjectId field in the database.
 # It will be represented as a `str` on the model so that it can be serialized to JSON.
 PyObjectId = Annotated[str, BeforeValidator(str)]
+
 
 
 class StudentModel(BaseModel):
@@ -47,7 +64,7 @@ class StudentModel(BaseModel):
                 "name": "Jane Doe",
                 "email": "jdoe@example.com",
                 "course": "Experiments, Science, and Fashion in Nanophotonics",
-                "gpa": 3.0,
+                "gpa": 5.10,
             }
         },
     )
@@ -70,7 +87,7 @@ class UpdateStudentModel(BaseModel):
                 "name": "Jane Doe",
                 "email": "jdoe@example.com",
                 "course": "Experiments, Science, and Fashion in Nanophotonics",
-                "gpa": 3.0,
+                "gpa": 8.0,
             }
         },
     )
@@ -99,10 +116,10 @@ async def create_student(student: StudentModel = Body(...)):
 
     A unique `id` will be created and provided in the response.
     """
-    new_student = await student_collection.insert_one(
+    new_student = student_collection.insert_one(
         student.model_dump(by_alias=True, exclude=["id"])
     )
-    created_student = await student_collection.find_one(
+    created_student = student_collection.find_one(
         {"_id": new_student.inserted_id}
     )
     return created_student
@@ -120,7 +137,8 @@ async def list_students():
 
     The response is unpaginated and limited to 1000 results.
     """
-    return StudentCollection(students=await student_collection.find().to_list(1000))
+
+    return StudentCollection(students = student_collection.find().batch_size(4))
 
 
 @app.get(
@@ -134,7 +152,7 @@ async def show_student(id: str):
     Get the record for a specific student, looked up by `id`.
     """
     if (
-        student := await student_collection.find_one({"_id": ObjectId(id)})
+        student := student_collection.find_one({"_id": ObjectId(id)})
     ) is not None:
         return student
 
@@ -159,7 +177,7 @@ async def update_student(id: str, student: UpdateStudentModel = Body(...)):
     }
 
     if len(student) >= 1:
-        update_result = await student_collection.find_one_and_update(
+        update_result = student_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": student},
             return_document=ReturnDocument.AFTER,
@@ -170,7 +188,7 @@ async def update_student(id: str, student: UpdateStudentModel = Body(...)):
             raise HTTPException(status_code=404, detail=f"Student {id} not found")
 
     # The update is empty, but we should still return the matching document:
-    if (existing_student := await student_collection.find_one({"_id": id})) is not None:
+    if (existing_student := student_collection.find_one({"_id": id})) is not None:
         return existing_student
 
     raise HTTPException(status_code=404, detail=f"Student {id} not found")
@@ -181,7 +199,7 @@ async def delete_student(id: str):
     """
     Remove a single student record from the database.
     """
-    delete_result = await student_collection.delete_one({"_id": ObjectId(id)})
+    delete_result =  student_collection.delete_one({"_id": ObjectId(id)})
 
     if delete_result.deleted_count == 1:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
